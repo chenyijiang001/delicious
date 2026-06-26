@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Delicious - 美食日记</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fafaf9;color:#292524;max-width:480px;margin:0 auto;min-height:100vh;position:relative}
+#app{min-height:100vh;display:flex;flex-direction:column}
+/* Auth */
+.auth-page{flex:1;display:flex;flex-direction:column;justify-content:center;padding:32px 24px;gap:16px}
+.auth-page h1{text-align:center;font-size:28px}
+.auth-page .logo{text-align:center;font-size:64px}
+.auth-toggle{text-align:center;color:#e65c41;cursor:pointer;font-size:14px}
+/* Input */
+input,select,textarea{width:100%;padding:12px 14px;border:1.5px solid #e7e5e4;border-radius:12px;font-size:16px;outline:none;background:#fff}
+input:focus,select:focus,textarea:focus{border-color:#e65c41}
+label{font-size:14px;font-weight:600;color:#78716c;margin-bottom:4px;display:block}
+.form-group{display:flex;flex-direction:column;gap:4px}
+textarea{min-height:80px;resize:vertical}
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 24px;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;width:100%}
+.btn-primary{background:#e65c41;color:#fff}
+.btn-primary:hover{background:#d44430}
+.btn-outline{background:#fff;border:1.5px solid #e65c41;color:#e65c41}
+.btn-danger{background:#fff;border:1.5px solid #dc2626;color:#dc2626}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+/* Top bar */
+.topbar{display:flex;align-items:center;padding:12px 16px;gap:12px;background:#fff;border-bottom:1px solid #f0efed;position:sticky;top:0;z-index:10}
+.topbar h2{flex:1;font-size:18px;text-align:center}
+.topbar .back-btn{background:none;border:none;font-size:20px;cursor:pointer;color:#e65c41;padding:4px}
+/* Home */
+.home-page{flex:1;display:flex;flex-direction:column}
+.search-bar{padding:8px 16px}
+.cat-chips{display:flex;gap:8px;padding:4px 16px 12px;overflow-x:auto}
+.cat-chip{padding:6px 14px;border-radius:20px;font-size:13px;white-space:nowrap;cursor:pointer;border:1.5px solid #e7e5e4;background:#fff;color:#78716c}
+.cat-chip.active{background:#e65c41;color:#fff;border-color:#e65c41}
+.food-list{flex:1;overflow-y:auto;padding:0 16px}
+.food-card{display:flex;gap:12px;padding:12px;margin-bottom:10px;background:#fff;border-radius:12px;cursor:pointer;box-shadow:0 1px 3px #0000000d}
+.food-card .thumb{width:80px;height:80px;border-radius:8px;background:#f0efed;display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;overflow:hidden}
+.food-card .thumb img{width:100%;height:100%;object-fit:cover}
+.food-card .info{flex:1;display:flex;flex-direction:column;justify-content:space-between}
+.food-card .name{font-weight:600;font-size:16px}
+.food-card .tags{display:flex;gap:6px;flex-wrap:wrap}
+.food-card .tags span{padding:2px 8px;border-radius:4px;font-size:11px;background:#f0efed;color:#78716c}
+.food-card .time{font-size:12px;color:#a8a29e}
+.empty{text-align:center;padding:40px 20px;color:#a8a29e}
+.empty .icon{font-size:48px;margin-bottom:8px}
+.fab{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:28px;background:#e65c41;color:#fff;border:none;font-size:28px;cursor:pointer;box-shadow:0 4px 12px #e65c4140;display:flex;align-items:center;justify-content:center}
+/* Upload */
+.upload-page{flex:1;display:flex;flex-direction:column}
+.preview-area{flex:1;display:flex;align-items:center;justify-content:center;background:#f0efed;margin:16px;border-radius:16px;overflow:hidden;min-height:240px}
+.preview-area img{max-width:100%;max-height:100%;object-fit:contain}
+.preview-placeholder{text-align:center;color:#a8a29e}
+.preview-placeholder .icon{font-size:64px}
+.upload-actions{display:flex;gap:12px;padding:16px}
+/* Result */
+.result-page{flex:1;overflow-y:auto;padding:16px}
+.result-page h3{margin-bottom:8px}
+.result-page .section{margin-bottom:20px}
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.chip-row .chip{padding:6px 14px;border-radius:20px;font-size:13px;background:#f0efed;color:#57534e}
+.ingredient-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0efed}
+.ingredient-item:last-child{border-bottom:none}
+.step-item{display:flex;gap:12px;padding:8px 0}
+.step-num{width:28px;height:28px;border-radius:14px;background:#e65c41;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0}
+.tip-item{padding:4px 0;font-size:14px;color:#57534e}
+/* Detail */
+.detail-page{flex:1;overflow-y:auto;padding:16px}
+.detail-page .hero{width:100%;height:200px;border-radius:12px;background:#f0efed;overflow:hidden;margin-bottom:16px}
+.detail-page .hero img{width:100%;height:100%;object-fit:cover}
+/* Loading */
+.loading-overlay{position:fixed;inset:0;background:#0000004d;display:flex;align-items:center;justify-content:center;z-index:100}
+.loading-card{background:#fff;padding:32px 40px;border-radius:16px;text-align:center}
+.spinner{width:40px;height:40px;border:4px solid #f0efed;border-top-color:#e65c41;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none}
+.error-text{color:#dc2626;font-size:14px;text-align:center}
+/* Share modal */
+.modal{position:fixed;inset:0;background:#0000004d;z-index:200;display:flex;align-items:flex-end;justify-content:center}
+.modal-content{background:#fff;width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:24px 16px 40px;max-height:80vh;overflow-y:auto}
+.share-card{border-radius:16px;overflow:hidden;box-shadow:0 4px 16px #00000014}
+.share-card .header{background:#fff0ee;padding:24px;text-align:center}
+.share-card .body{padding:20px}
+.share-card .stat-row{display:flex;justify-content:space-around;margin-bottom:16px}
+.share-card .stat{text-align:center}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+const API = 'http://localhost:8000/api/v1';
+let token = localStorage.getItem('token');
+let state = {
+  page: token ? 'home' : 'auth',
+  authMode: 'login', // login | register
+  foods: [],
+  searchQ: '',
+  categoryFilter: null,
+  currentFood: null,
+  recipe: null, // AI result
+  uploadImage: null, // base64 data URL
+  uploadFile: null, // File object
+};
+
+const categories = ['家常菜','烘焙','饮品','汤品','小吃','面食','其他'];
+
+async function apiCall(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`${API}${path}`, opts);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err || `HTTP ${res.status}`);
+  }
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('application/json') ? res.json() : null;
+}
+
+async function uploadImage(file) {
+  const fd = new FormData();
+  fd.append('image', file);
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(`${API}/ai/recognize`, { method: 'POST', headers, body: fd });
+  if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+  return res.json();
+}
+
+// Auth
+async function doLogin(email, pw) {
+  const data = await apiCall('POST', '/auth/login', { email, password: pw });
+  token = data.access_token;
+  localStorage.setItem('token', token);
+  state.page = 'home';
+  render();
+  loadFoods();
+}
+
+async function doRegister(email, nick, pw) {
+  const data = await apiCall('POST', '/auth/register', { email, nickname: nick, password: pw });
+  token = data.access_token;
+  localStorage.setItem('token', token);
+  state.page = 'home';
+  render();
+  loadFoods();
+}
+
+function doLogout() {
+  token = null;
+  localStorage.removeItem('token');
+  state.page = 'auth';
+  state.foods = [];
+  render();
+}
+
+// Foods
+async function loadFoods() {
+  try {
+    const params = new URLSearchParams({ page: 1, size: 50 });
+    if (state.searchQ) params.set('q', state.searchQ);
+    if (state.categoryFilter) params.set('category', state.categoryFilter);
+    const data = await apiCall('GET', `/foods?${params}`);
+    state.foods = data.items || [];
+    render();
+  } catch (e) {
+    console.error('Load foods error:', e);
+  }
+}
+
+async function loadFood(id) {
+  try {
+    state.currentFood = await apiCall('GET', `/foods/${id}`);
+    render();
+  } catch (e) {
+    console.error('Load food error:', e);
+  }
+}
+
+async function saveFood(body) {
+  await apiCall('POST', '/foods', body);
+  state.page = 'home';
+  state.recipe = null;
+  state.uploadImage = null;
+  state.uploadFile = null;
+  render();
+  loadFoods();
+}
+
+async function updateFood(id, body) {
+  await apiCall('PUT', `/foods/${id}`, body);
+  state.page = 'detail';
+  state.currentFood = null;
+  render();
+  loadFood(id);
+}
+
+async function deleteFood(id) {
+  await apiCall('DELETE', `/foods/${id}`);
+  state.page = 'home';
+  state.currentFood = null;
+  render();
+  loadFoods();
+}
+
+// Render
+function h(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  if (attrs) Object.entries(attrs).forEach(([k, v]) => {
+    if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k === 'className') el.className = v;
+    else if (k === 'style') Object.assign(el.style, v);
+    else el.setAttribute(k, v);
+  });
+  children.flat().forEach(c => {
+    if (typeof c === 'string') el.appendChild(document.createTextNode(c));
+    else if (c instanceof Node) el.appendChild(c);
+  });
+  return el;
+}
+
+function render() {
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+
+  if (state.page === 'auth') return renderAuth(app);
+  if (state.page === 'home') return renderHome(app);
+  if (state.page === 'upload') return renderUpload(app);
+  if (state.page === 'result') return renderResult(app);
+  if (state.page === 'detail') return renderDetail(app);
+  if (state.page === 'edit') return renderEdit(app);
+}
+
+// Auth Page
+function renderAuth(root) {
+  const isLogin = state.authMode === 'login';
+  let emailInput, pwInput, nickInput;
+  const page = h('div', { className: 'auth-page' },
+    h('div', { className: 'logo' }, '🍽️'),
+    h('h1', {}, 'Delicious'),
+    h('p', { style: { textAlign: 'center', color: '#a8a29e', marginTop: '-8px' } },
+      isLogin ? '登录你的美食日记' : '创建账号，开始记录美食'),
+    h('div', { className: 'form-group' },
+      h('label', {}, '邮箱'),
+      emailInput = h('input', { type: 'email', placeholder: 'your@email.com' }),
+    ),
+    !isLogin ? h('div', { className: 'form-group' },
+      h('label', {}, '昵称'),
+      nickInput = h('input', { placeholder: '美食家' }),
+    ) : null,
+    h('div', { className: 'form-group' },
+      h('label', {}, '密码'),
+      pwInput = h('input', { type: 'password', placeholder: '至少6位' }),
+    ),
+    h('p', { id: 'auth-error', className: 'error-text hidden' }),
+    h('button', {
+      className: 'btn btn-primary',
+      onclick: async () => {
+        const errEl = document.getElementById('auth-error');
+        errEl.classList.add('hidden');
+        try {
+          if (isLogin) {
+            await doLogin(emailInput.value.trim(), pwInput.value);
+          } else {
+            await doRegister(emailInput.value.trim(), (nickInput?.value || '').trim(), pwInput.value);
+          }
+        } catch (e) {
+          errEl.textContent = isLogin ? '邮箱或密码错误' : '注册失败';
+          errEl.classList.remove('hidden');
+        }
+      }
+    }, isLogin ? '登录' : '注册'),
+    h('p', {
+      className: 'auth-toggle',
+      onclick: () => { state.authMode = isLogin ? 'register' : 'login'; render(); }
+    }, isLogin ? '没有账号？去注册' : '已有账号？去登录'),
+  );
+  root.appendChild(page);
+}
+
+// Home Page
+function renderHome(root) {
+  const wrapper = h('div', { className: 'home-page' });
+  // Top bar
+  wrapper.appendChild(h('div', { className: 'topbar' },
+    h('h2', {}, '我的美食日记'),
+    h('button', { className: 'back-btn', onclick: doLogout }, '↪'),
+  ));
+
+  // Search
+  const searchInput = h('input', {
+    placeholder: '搜索菜名...',
+    value: state.searchQ,
+    oninput: (e) => {
+      state.searchQ = e.target.value;
+      loadFoods();
+    }
+  });
+  wrapper.appendChild(h('div', { className: 'search-bar' }, searchInput));
+
+  // Category chips
+  const chips = h('div', { className: 'cat-chips' },
+    h('span', {
+      className: 'cat-chip' + (!state.categoryFilter ? ' active' : ''),
+      onclick: () => { state.categoryFilter = null; render(); loadFoods(); }
+    }, '全部'),
+    ...categories.map(c => h('span', {
+      className: 'cat-chip' + (state.categoryFilter === c ? ' active' : ''),
+      onclick: () => {
+        state.categoryFilter = state.categoryFilter === c ? null : c;
+        render();
+        loadFoods();
+      }
+    }, c))
+  );
+  wrapper.appendChild(chips);
+
+  // Food list
+  const list = h('div', { className: 'food-list' });
+  if (state.foods.length === 0) {
+    list.appendChild(h('div', { className: 'empty' },
+      h('div', { className: 'icon' }, '🍜'),
+      h('p', {}, '还没有美食记录'),
+      h('p', { style: { fontSize: '13px' } }, '去拍照识别第一道菜吧！'),
+    ));
+  } else {
+    state.foods.forEach(f => {
+      list.appendChild(h('div', {
+        className: 'food-card',
+        onclick: () => {
+          state.page = 'detail';
+          state.currentFood = null;
+          render();
+          loadFood(f.id);
+        }
+      },
+        h('div', { className: 'thumb' },
+          f.thumbnail_url
+            ? h('img', { src: f.thumbnail_url })
+            : '🍽️'
+        ),
+        h('div', { className: 'info' },
+          h('div', { className: 'name' }, f.dish_name),
+          h('div', { className: 'tags' },
+            h('span', {}, f.category),
+            h('span', {}, f.difficulty),
+            f.total_cost ? h('span', {}, `¥${Number(f.total_cost).toFixed(1)}`) : null,
+          ),
+          h('div', { className: 'time' },
+            new Date(f.created_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+          ),
+        ),
+      ));
+    });
+  }
+  wrapper.appendChild(list);
+
+  // FAB
+  wrapper.appendChild(h('button', {
+    className: 'fab',
+    onclick: () => { state.page = 'upload'; state.recipe = null; state.uploadImage = null; state.uploadFile = null; render(); }
+  }, '📷'));
+
+  root.appendChild(wrapper);
+}
+
+// Upload Page
+function renderUpload(root) {
+  const wrapper = h('div', { className: 'upload-page' });
+  wrapper.appendChild(h('div', { className: 'topbar' },
+    h('button', { className: 'back-btn', onclick: () => { state.page = 'home'; render(); } }, '←'),
+    h('h2', {}, '拍照识别'),
+  ));
+
+  // Preview
+  const preview = h('div', { className: 'preview-area' });
+  if (state.uploadImage) {
+    preview.appendChild(h('img', { src: state.uploadImage }));
+  } else {
+    preview.appendChild(h('div', { className: 'preview-placeholder' },
+      h('div', { className: 'icon' }, '📸'),
+      h('p', {}, '拍照或选择一张美食图片'),
+    ));
+  }
+  wrapper.appendChild(preview);
+
+  // Actions
+  const actions = h('div', { className: 'upload-actions' });
+  const fileInput = h('input', {
+    type: 'file', accept: 'image/*', style: { display: 'none' },
+    onchange: (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      state.uploadFile = file;
+      const reader = new FileReader();
+      reader.onload = () => { state.uploadImage = reader.result; render(); };
+      reader.readAsDataURL(file);
+    }
+  });
+
+  actions.appendChild(h('button', {
+    className: 'btn btn-outline',
+    style: { flex: 1 },
+    onclick: () => fileInput.click(),
+  }, '相册'));
+  actions.appendChild(fileInput);
+
+  if (state.uploadImage) {
+    actions.appendChild(h('button', {
+      className: 'btn btn-primary',
+      style: { flex: 1 },
+      onclick: async () => {
+        renderLoading(true, 'AI 正在识别中...');
+        try {
+          state.recipe = await uploadImage(state.uploadFile);
+          state.page = 'result';
+          renderLoading(false);
+          render();
+        } catch (e) {
+          renderLoading(false);
+          render();
+          alert('识别失败: ' + e.message);
+        }
+      }
+    }, '🔍 开始识别'));
+  }
+
+  wrapper.appendChild(actions);
+  root.appendChild(wrapper);
+}
+
+// Result Page (AI result)
+function renderResult(root) {
+  const r = state.recipe;
+  if (!r) return;
+
+  const wrapper = h('div', { className: 'topbar' },
+    h('button', { className: 'back-btn', onclick: () => { state.page = 'upload'; state.recipe = null; render(); } }, '←'),
+    h('h2', {}, r.dish_name || '识别结果'),
+    h('button', {
+      className: 'btn btn-primary',
+      style: { width: 'auto', padding: '8px 16px', fontSize: '14px' },
+      onclick: async () => {
+        renderLoading(true, '保存中...');
+        try {
+          await saveFood({
+            image_url: r.image_url,
+            thumbnail_url: r.thumbnail_url,
+            dish_name: r.dish_name,
+            category: r.category,
+            ingredients: r.ingredients,
+            steps: r.steps,
+            total_cost: r.total_cost,
+            serving_size: r.serving_size,
+            difficulty: r.difficulty,
+            tips: r.tips,
+          });
+          renderLoading(false);
+        } catch (e) {
+          renderLoading(false);
+          alert('保存失败: ' + e.message);
+        }
+      }
+    }, '保存'),
+  );
+
+  const body = h('div', { className: 'result-page' });
+
+  // Image
+  if (state.uploadImage) {
+    body.appendChild(h('img', {
+      src: state.uploadImage,
+      style: { width: '100%', borderRadius: '12px', marginBottom: '16px', maxHeight: '240px', objectFit: 'cover' }
+    }));
+  }
+
+  // Chips
+  body.appendChild(h('div', { className: 'chip-row' },
+    h('span', { className: 'chip' }, `${r.serving_size || 1}人份`),
+    h('span', { className: 'chip' }, r.difficulty || '中等'),
+    h('span', { className: 'chip' }, `¥${Number(r.total_cost || 0).toFixed(1)}`),
+    h('span', { className: 'chip' }, r.category || '其他'),
+  ));
+
+  // Ingredients
+  body.appendChild(h('div', { className: 'section' },
+    h('h3', {}, '📋 耗材清单'),
+    ...(r.ingredients || []).map(i => h('div', { className: 'ingredient-item' },
+      h('span', {}, `${i.name} ${i.amount || ''}${i.unit || ''}`),
+      h('span', { style: { color: '#e65c41', fontWeight: 600 } }, `¥${Number(i.estimated_price || 0).toFixed(1)}`),
+    )),
+  ));
+
+  // Steps
+  body.appendChild(h('div', { className: 'section' },
+    h('h3', {}, '👨‍🍳 制作步骤'),
+    ...(r.steps || []).map(s => h('div', { className: 'step-item' },
+      h('div', { className: 'step-num' }, `${s.step_num}`),
+      h('div', { style: { flex: 1 } },
+        h('p', {}, s.description),
+        s.duration_minutes > 0 ? h('span', { style: { fontSize: '12px', color: '#a8a29e' } }, `⏱ ${s.duration_minutes}分钟`) : null,
+      ),
+    )),
+  ));
+
+  // Tips
+  if (r.tips && r.tips.length > 0) {
+    body.appendChild(h('div', { className: 'section' },
+      h('h3', {}, '💡 小贴士'),
+      ...r.tips.map(t => h('div', { className: 'tip-item' }, `• ${t}`)),
+    ));
+  }
+
+  root.appendChild(wrapper);
+  root.appendChild(body);
+}
+
+// Detail Page
+function renderDetail(root) {
+  const f = state.currentFood;
+  if (!f) {
+    root.appendChild(h('div', { style: { padding: '40px', textAlign: 'center' } }, '加载中...'));
+    return;
+  }
+
+  const wrapper = h('div', { className: 'topbar' },
+    h('button', { className: 'back-btn', onclick: () => { state.page = 'home'; state.currentFood = null; render(); } }, '←'),
+    h('h2', {}, f.dish_name),
+    h('button', {
+      className: 'btn btn-outline',
+      style: { width: 'auto', padding: '6px 12px', fontSize: '13px' },
+      onclick: () => {
+        state.page = 'edit';
+        render();
+      }
+    }, '编辑'),
+    h('button', {
+      className: 'btn btn-danger',
+      style: { width: 'auto', padding: '6px 12px', fontSize: '13px' },
+      onclick: async () => {
+        if (!confirm('确认删除？')) return;
+        await deleteFood(f.id);
+      }
+    }, '删除'),
+  );
+
+  const body = h('div', { className: 'detail-page' });
+
+  // Hero image
+  if (f.image_url) {
+    body.appendChild(h('div', { className: 'hero' },
+      h('img', { src: f.image_url }),
+    ));
+  }
+
+  // Chips
+  body.appendChild(h('div', { className: 'chip-row' },
+    h('span', { className: 'chip' }, `${f.serving_size}人份`),
+    h('span', { className: 'chip' }, f.difficulty),
+    f.total_cost ? h('span', { className: 'chip' }, `¥${Number(f.total_cost).toFixed(1)}`) : null,
+    h('span', { className: 'chip' }, f.category),
+  ));
+
+  if (f.notes) {
+    body.appendChild(h('p', { style: { color: '#78716c', marginBottom: '16px' } }, f.notes));
+  }
+
+  // Ingredients
+  body.appendChild(h('div', { className: 'section' },
+    h('h3', {}, '📋 耗材清单'),
+    ...(f.ingredients || []).map(i => h('div', { className: 'ingredient-item' },
+      h('span', {}, `${i.name} ${i.amount || ''}${i.unit || ''}`),
+      h('span', { style: { color: '#e65c41', fontWeight: 600 } }, `¥${Number(i.estimated_price || 0).toFixed(1)}`),
+    )),
+  ));
+
+  // Steps
+  body.appendChild(h('div', { className: 'section' },
+    h('h3', {}, '👨‍🍳 制作步骤'),
+    ...(f.steps || []).map(s => h('div', { className: 'step-item' },
+      h('div', { className: 'step-num' }, `${s.step_num}`),
+      h('div', { style: { flex: 1 } },
+        h('p', {}, s.description),
+        s.duration_minutes > 0 ? h('span', { style: { fontSize: '12px', color: '#a8a29e' } }, `⏱ ${s.duration_minutes}分钟`) : null,
+      ),
+    )),
+  ));
+
+  // Tips
+  if (f.tips && f.tips.length > 0) {
+    body.appendChild(h('div', { className: 'section' },
+      h('h3', {}, '💡 小贴士'),
+      ...f.tips.map(t => h('div', { className: 'tip-item' }, `• ${t}`)),
+    ));
+  }
+
+  // Share button
+  body.appendChild(h('button', {
+    className: 'btn btn-outline',
+    style: { marginTop: '16px' },
+    onclick: () => showShareModal(f),
+  }, '📤 分享美食卡片'));
+
+  root.appendChild(wrapper);
+  root.appendChild(body);
+}
+
+// Edit Page
+function renderEdit(root) {
+  const f = state.currentFood;
+  const isNew = !f;
+
+  let nameInput, categorySelect, costInput, servingInput, difficultySelect, notesInput;
+
+  const wrapper = h('div', { className: 'topbar' },
+    h('button', { className: 'back-btn', onclick: () => {
+      state.page = isNew ? 'result' : 'detail';
+      render();
+    }}, '←'),
+    h('h2', {}, isNew ? '保存记录' : '编辑记录'),
+  );
+
+  const body = h('div', { style: { flex: 1, overflowY: 'auto', padding: '16px' } });
+
+  body.appendChild(h('div', { className: 'form-group', style: { marginBottom: '12px' } },
+    h('label', {}, '菜名'),
+    nameInput = h('input', { value: f?.dish_name || '' }),
+  ));
+
+  body.appendChild(h('div', { className: 'form-group', style: { marginBottom: '12px' } },
+    h('label', {}, '分类'),
+    categorySelect = h('select', {},
+      ...categories.map(c => h('option', { value: c, selected: (f?.category || '家常菜') === c }, c)),
+    ),
+  ));
+
+  body.appendChild(h('div', { style: { display: 'flex', gap: '12px', marginBottom: '12px' } },
+    h('div', { className: 'form-group', style: { flex: 1 } },
+      h('label', {}, '总成本(元)'),
+      costInput = h('input', { type: 'number', step: '0.1', value: f?.total_cost || '' }),
+    ),
+    h('div', { className: 'form-group', style: { flex: 1 } },
+      h('label', {}, '几人份'),
+      servingInput = h('input', { type: 'number', value: f?.serving_size || '1' }),
+    ),
+  ));
+
+  body.appendChild(h('div', { className: 'form-group', style: { marginBottom: '12px' } },
+    h('label', {}, '难度'),
+    difficultySelect = h('select', {},
+      ...['简单','中等','困难'].map(d => h('option', { value: d, selected: (f?.difficulty || '中等') === d }, d)),
+    ),
+  ));
+
+  body.appendChild(h('div', { className: 'form-group', style: { marginBottom: '16px' } },
+    h('label', {}, '备注'),
+    notesInput = h('textarea', { value: f?.notes || '' }),
+  ));
+
+  // Ingredients (read-only in edit for now)
+  body.appendChild(h('h3', { style: { marginBottom: '8px' } }, '📋 耗材清单'));
+  (f?.ingredients || state.recipe?.ingredients || []).forEach(i => {
+    body.appendChild(h('div', { className: 'ingredient-item' },
+      h('span', {}, `${i.name} ${i.amount || ''}${i.unit || ''}`),
+      h('span', { style: { color: '#e65c41' } }, `¥${Number(i.estimated_price || 0).toFixed(1)}`),
+    ));
+  });
+
+  // Steps
+  body.appendChild(h('h3', { style: { marginTop: '16px', marginBottom: '8px' } }, '👨‍🍳 制作步骤'));
+  (f?.steps || state.recipe?.steps || []).forEach(s => {
+    body.appendChild(h('div', { className: 'step-item' },
+      h('div', { className: 'step-num' }, `${s.step_num}`),
+      h('p', { style: { flex: 1 } }, s.description),
+    ));
+  });
+
+  // Save button
+  body.appendChild(h('button', {
+    className: 'btn btn-primary',
+    style: { marginTop: '24px' },
+    onclick: async () => {
+      const body = {
+        dish_name: nameInput.value.trim(),
+        category: categorySelect.value,
+        ingredients: f?.ingredients || state.recipe?.ingredients || [],
+        steps: f?.steps || state.recipe?.steps || [],
+        total_cost: parseFloat(costInput.value) || 0,
+        serving_size: parseInt(servingInput.value) || 1,
+        difficulty: difficultySelect.value,
+        tips: f?.tips || state.recipe?.tips || [],
+        notes: notesInput.value.trim() || null,
+        image_url: f?.image_url || state.recipe?.image_url || null,
+        thumbnail_url: f?.thumbnail_url || state.recipe?.thumbnail_url || null,
+      };
+
+      renderLoading(true, '保存中...');
+      try {
+        if (isNew && state.recipe) {
+          await saveFood(body);
+        } else if (f) {
+          await updateFood(f.id, body);
+        }
+        renderLoading(false);
+      } catch (e) {
+        renderLoading(false);
+        alert('保存失败: ' + e.message);
+      }
+    }
+  }, '💾 保存记录'));
+
+  root.appendChild(wrapper);
+  root.appendChild(body);
+}
+
+// Share modal
+function showShareModal(f) {
+  const modal = h('div', { className: 'modal', onclick: (e) => { if (e.target === modal) modal.remove(); } },
+    h('div', { className: 'modal-content' },
+      h('h3', { style: { marginBottom: '16px' } }, '📤 分享卡片'),
+      h('div', { className: 'share-card' },
+        h('div', { className: 'header' },
+          h('div', { style: { fontSize: '32px' } }, '🍽️'),
+          h('h3', {}, f.dish_name),
+          h('p', { style: { fontSize: '12px', color: '#78716c' } }, '来自 Delicious 的美食记录'),
+        ),
+        h('div', { className: 'body' },
+          h('div', { className: 'stat-row' },
+            h('div', { className: 'stat' },
+              h('p', { style: { fontWeight: 600 } }, `${f.serving_size}人份`),
+              h('p', { style: { fontSize: '12px', color: '#a8a29e' } }, '人数'),
+            ),
+            h('div', { className: 'stat' },
+              h('p', { style: { fontWeight: 600 } }, f.difficulty),
+              h('p', { style: { fontSize: '12px', color: '#a8a29e' } }, '难度'),
+            ),
+            h('div', { className: 'stat' },
+              h('p', { style: { fontWeight: 600 } }, `¥${Number(f.total_cost || 0).toFixed(1)}`),
+              h('p', { style: { fontSize: '12px', color: '#a8a29e' } }, '成本'),
+            ),
+          ),
+          ...(f.ingredients || []).slice(0, 5).map(i =>
+            h('p', { style: { fontSize: '13px', marginBottom: '2px' } }, `${i.name} ${i.amount}${i.unit}`)
+          ),
+        ),
+      ),
+      h('button', {
+        className: 'btn btn-outline',
+        style: { marginTop: '16px' },
+        onclick: () => modal.remove(),
+      }, '关闭'),
+    ),
+  );
+  document.body.appendChild(modal);
+}
+
+function renderLoading(show, msg) {
+  let overlay = document.getElementById('loading-overlay');
+  if (show) {
+    if (!overlay) {
+      overlay = h('div', { id: 'loading-overlay', className: 'loading-overlay' },
+        h('div', { className: 'loading-card' },
+          h('div', { className: 'spinner' }),
+          h('p', { id: 'loading-msg' }, msg || '处理中...'),
+        ),
+      );
+      document.body.appendChild(overlay);
+    }
+    document.getElementById('loading-msg').textContent = msg || '处理中...';
+    overlay.classList.remove('hidden');
+  } else if (overlay) {
+    overlay.remove();
+  }
+}
+
+// Init
+render();
+if (state.page === 'home') loadFoods();
+</script>
+</body>
+</html>
