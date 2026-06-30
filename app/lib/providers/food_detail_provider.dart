@@ -10,9 +10,11 @@ class FoodDetailState {
   final FoodRecord? record;
   final String? errorMessage;
 
-  const FoodDetailState({this.status = DetailStatus.loading, this.record, this.errorMessage});
+  const FoodDetailState(
+      {this.status = DetailStatus.loading, this.record, this.errorMessage});
 
-  FoodDetailState copyWith({DetailStatus? status, FoodRecord? record, String? errorMessage}) =>
+  FoodDetailState copyWith(
+          {DetailStatus? status, FoodRecord? record, String? errorMessage}) =>
       FoodDetailState(
         status: status ?? this.status,
         record: record ?? this.record,
@@ -33,49 +35,9 @@ class FoodDetailNotifier extends StateNotifier<FoodDetailState> {
         status: DetailStatus.loaded,
         record: FoodRecord.fromJson(res.data as Map<String, dynamic>),
       );
-    } catch (e) {
-      state = FoodDetailState(status: DetailStatus.error, errorMessage: '加载失败');
-    }
-  }
-
-  Future<bool> save(FoodRecord record) async {
-    state = state.copyWith(status: DetailStatus.saving);
-    try {
-      final body = <String, dynamic>{
-        'image_url': record.imageUrl,
-        'thumbnail_url': record.thumbnailUrl,
-        'dish_name': record.dishName,
-        'category': record.category,
-        'ingredients': record.ingredients.map((i) => i.toJson()).toList(),
-        'steps': record.steps.map((s) => s.toJson()).toList(),
-        'total_cost': record.totalCost,
-        'serving_size': record.servingSize,
-        'difficulty': record.difficulty,
-        'tips': record.tips,
-        'notes': record.notes,
-      };
-
-      if (record.id == 'new') {
-        final res = await _api.dio.post('/foods', data: body);
-        state = FoodDetailState(
-          status: DetailStatus.loaded,
-          record: FoodRecord.fromJson(res.data as Map<String, dynamic>),
-        );
-        return true;
-      } else {
-        final res = await _api.dio.put('/foods/${record.id}', data: body);
-        state = FoodDetailState(
-          status: DetailStatus.loaded,
-          record: FoodRecord.fromJson(res.data as Map<String, dynamic>),
-        );
-        return true;
-      }
-    } catch (e) {
-      state = state.copyWith(
-        status: DetailStatus.error,
-        errorMessage: '保存失败: ${e.toString()}',
-      );
-      return false;
+    } catch (_) {
+      state = const FoodDetailState(
+          status: DetailStatus.error, errorMessage: '加载失败');
     }
   }
 
@@ -83,18 +45,32 @@ class FoodDetailNotifier extends StateNotifier<FoodDetailState> {
     try {
       await _api.dio.delete('/foods/$id');
       return true;
-    } catch (e) {
+    } catch (_) {
       return false;
+    }
+  }
+
+  Future<FoodRecord?> duplicate(String id, {int? servingSize}) async {
+    try {
+      final res = await _api.dio.post(
+        '/foods/$id/duplicate',
+        data: {if (servingSize != null) 'serving_size': servingSize},
+      );
+      return FoodRecord.fromJson(res.data as Map<String, dynamic>);
+    } catch (_) {
+      return null;
     }
   }
 }
 
-final foodDetailProvider = StateNotifierProvider.family<FoodDetailNotifier, FoodDetailState, String>(
+final foodDetailProvider = StateNotifierProvider.family<FoodDetailNotifier,
+    FoodDetailState, String>(
   (ref, id) => FoodDetailNotifier(ref.watch(apiClientProvider)),
 );
 
-/// Create a new record from AI result
+/// 从 AI 识别结果构造一条暂存 FoodRecord，用于 recipe_editor 页编辑。
 FoodRecord recipeToRecord(Recipe recipe, {String id = 'new'}) {
+  final now = DateTime.now();
   return FoodRecord(
     id: id,
     imageUrl: recipe.imageUrl,
@@ -107,7 +83,9 @@ FoodRecord recipeToRecord(Recipe recipe, {String id = 'new'}) {
     servingSize: recipe.servingSize,
     difficulty: recipe.difficulty,
     tips: recipe.tips,
-    createdAt: DateTime.now(),
-    updatedAt: DateTime.now(),
+    cookedAt: DateTime(now.year, now.month, now.day),
+    source: 'recognize',
+    createdAt: now,
+    updatedAt: now,
   );
 }

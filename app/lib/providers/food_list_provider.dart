@@ -10,6 +10,7 @@ class FoodListState {
   final String? errorMessage;
   final String? searchQuery;
   final String? categoryFilter;
+  final String? ingredientFilter;
 
   const FoodListState({
     this.items = const [],
@@ -19,6 +20,7 @@ class FoodListState {
     this.errorMessage,
     this.searchQuery,
     this.categoryFilter,
+    this.ingredientFilter,
   });
 
   FoodListState copyWith({
@@ -29,6 +31,7 @@ class FoodListState {
     String? errorMessage,
     String? searchQuery,
     String? categoryFilter,
+    String? ingredientFilter,
   }) =>
       FoodListState(
         items: items ?? this.items,
@@ -38,6 +41,7 @@ class FoodListState {
         errorMessage: errorMessage,
         searchQuery: searchQuery ?? this.searchQuery,
         categoryFilter: categoryFilter ?? this.categoryFilter,
+        ingredientFilter: ingredientFilter ?? this.ingredientFilter,
       );
 }
 
@@ -58,13 +62,23 @@ class FoodListNotifier extends StateNotifier<FoodListState> {
 
   Future<void> refresh() => loadFirst();
 
-  Future<void> search(String query) async {
-    state = state.copyWith(searchQuery: query.isEmpty ? null : query);
+  Future<void> search(String query, {String mode = 'dish'}) async {
+    // 直接构造新 state，避免 copyWith fallback 导致无法清空搜索词
+    final q = query.isEmpty ? null : query;
+    state = FoodListState(
+      categoryFilter: state.categoryFilter,
+      searchQuery: mode == 'dish' ? q : null,
+      ingredientFilter: mode == 'ingredient' ? q : null,
+    );
     await loadFirst();
   }
 
   Future<void> filterCategory(String? category) async {
-    state = state.copyWith(categoryFilter: category);
+    state = FoodListState(
+      categoryFilter: category,
+      searchQuery: state.searchQuery,
+      ingredientFilter: state.ingredientFilter,
+    );
     await loadFirst();
   }
 
@@ -75,6 +89,7 @@ class FoodListNotifier extends StateNotifier<FoodListState> {
       final params = <String, dynamic>{'page': page, 'size': 20};
       if (state.searchQuery != null) params['q'] = state.searchQuery;
       if (state.categoryFilter != null) params['category'] = state.categoryFilter;
+      if (state.ingredientFilter != null) params['ingredient'] = state.ingredientFilter;
 
       final res = await _api.dio.get('/foods', queryParameters: params);
       final data = res.data;

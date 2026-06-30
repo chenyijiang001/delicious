@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
-from decimal import Decimal
+from typing import Optional, List, Literal
+from datetime import date
 
 
 class IngredientSchema(BaseModel):
@@ -8,6 +8,7 @@ class IngredientSchema(BaseModel):
     amount: float
     unit: str
     estimated_price: float
+    price_source: Literal["ai", "user"] = "ai"
 
 
 class StepSchema(BaseModel):
@@ -28,6 +29,8 @@ class FoodRecordCreate(BaseModel):
     difficulty: str = "中等"
     tips: List[str] = []
     notes: Optional[str] = None
+    cooked_at: Optional[date] = None
+    source: Literal["recognize", "manual", "duplicate"] = "recognize"
 
 
 class FoodRecordUpdate(BaseModel):
@@ -40,6 +43,7 @@ class FoodRecordUpdate(BaseModel):
     difficulty: Optional[str] = None
     tips: Optional[List[str]] = None
     notes: Optional[str] = None
+    cooked_at: Optional[date] = None
 
 
 class FoodRecordResponse(BaseModel):
@@ -55,6 +59,8 @@ class FoodRecordResponse(BaseModel):
     difficulty: str
     tips: List[str]
     notes: Optional[str] = None
+    cooked_at: str
+    source: str
     created_at: str
     updated_at: str
 
@@ -66,3 +72,14 @@ class FoodListResponse(BaseModel):
     total: int
     page: int
     size: int
+
+
+class FoodDuplicateRequest(BaseModel):
+    serving_size: Optional[int] = Field(default=None, ge=1, le=20)
+
+
+class FoodDuplicateHint(BaseModel):
+    """POST /foods 检测到同月近似记录时返回，HTTP 200。"""
+    duplicate_of: str
+    similarity: float
+    candidate: FoodRecordResponse

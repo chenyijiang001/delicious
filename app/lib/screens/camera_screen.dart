@@ -1,278 +1,432 @@
+import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+
+import '../models/food_record.dart';
 import '../providers/camera_provider.dart';
 import '../providers/food_detail_provider.dart';
+import '../services/analytics_service.dart';
 
-class CameraScreen extends ConsumerWidget {
+class CameraScreen extends ConsumerStatefulWidget {
   const CameraScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CameraScreen> createState() => _CameraScreenState();
+}
+
+class _CameraScreenState extends ConsumerState<CameraScreen> {
+  Timer? _stageTimer;
+  int _stage = 0;
+  bool _navigating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      ref.read(analyticsProvider).log('camera_open', {'source': 'tab'});
+    });
+  }
+
+  @override
+  void dispose() {
+    _stageTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startStageTicker() {
+    _stageTimer?.cancel();
+    _stage = 0;
+    _stageTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      final started = ref.read(cameraProvider).analyzingStartedAt;
+      if (started == null) return;
+      final elapsed = DateTime.now().difference(started).inSeconds;
+      final next = elapsed < 2 ? 0 : (elapsed < 5 ? 1 : 2);
+      if (next != _stage && mounted) {
+        setState(() => _stage = next);
+      }
+    });
+  }
+
+  void _stopStageTicker() {
+    _stageTimer?.cancel();
+    _stageTimer = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen<CameraState>(cameraProvider, (prev, next) {
+      if (next.status == CameraStatus.uploading ||
+          next.status == CameraStatus.analyzing) {
+        if (_stageTimer == null) _startStageTicker();
+      } else {
+        _stopStageTicker();
+      }
+
+      if (next.status == CameraStatus.done &&
+          next.recipe != null &&
+          !_navigating) {
+        _navigating = true;
+        ref.read(analyticsProvider).log('recognize_done', {
+          'cache_hit': next.recipe!.cacheHit,
+          'latency_ms': next.recipe!.latencyMs,
+        });
+        final record = recipeToRecord(next.recipe!);
+        final bytes = next.imageBytes;
+        ref.read(cameraProvider.notifier).reset();
+        Future.microtask(() {
+          if (mounted) {
+            context.pushReplacement('/food/new/edit', extra: {
+              'record': record,
+              'imageBytes': bytes,
+            });
+          }
+        });
+      }
+
+      if (next.status == CameraStatus.error) {
+        ref.read(analyticsProvider).log('recognize_fail', {
+          'error_code': next.errorCode ?? 'unknown',
+        });
+      }
+    });
+
     final state = ref.watch(cameraProvider);
     final notifier = ref.read(cameraProvider.notifier);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('拍照识别'),
-        actions: [
-          if (state.status == CameraStatus.done)
-            TextButton(
-              onPressed: () async {
-                if (state.recipe != null) {
-                  final record = recipeToRecord(state.recipe!);
-                  notifier.reset();
-                  context.push('/food/new/edit', extra: record);
-                }
-              },
-              child: const Text('确认并保存'),
-            ),
-        ],
-      ),
-      body: _buildBody(context, state, notifier),
+      appBar: AppBar(title: const Text('拍照识别')),
+      body: SafeArea(child: _buildBody(state, notifier)),
     );
   }
 
-  Widget _buildBody(BuildContext context, CameraState state, CameraNotifier notifier) {
+  Widget _buildBody(CameraState state, CameraNotifier notifier) {
     switch (state.status) {
       case CameraStatus.idle:
       case CameraStatus.picking:
-        return _buildImagePreview(context, state, notifier);
+        return _pickerView(notifier);
       case CameraStatus.uploading:
       case CameraStatus.analyzing:
-        return _buildAnalyzing(context);
+        return _analyzingView(state);
       case CameraStatus.done:
-        return _buildResult(context, state);
+        // 在 listen 里跳转过去，这里短暂留白
+        return const Center(child: CircularProgressIndicator());
       case CameraStatus.error:
-        return _buildError(context, state, notifier);
+        return _errorView(state, notifier);
     }
   }
 
-  Widget _buildImagePreview(
-      BuildContext context, CameraState state, CameraNotifier notifier) {
-    final hasImage = state.imageBytes != null;
+  // ---------- 选图 ----------
+  Widget _pickerView(CameraNotifier notifier) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      child: Column(
+        children: [
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.camera_alt_outlined,
+                      size: 80, color: theme.colorScheme.outline),
+                  const SizedBox(height: 16),
+                  Text('拍一张你的菜', style: theme.textTheme.headlineSmall),
+                  const SizedBox(height: 8),
+                  Text(
+                    '选完图自动识别，不用再点确认',
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: theme.colorScheme.outline),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickAndAnalyze(notifier, ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text('从相册'),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => _pickAndAnalyze(notifier, ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt),
+                  label: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text('拍照'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: () => _goManual(),
+            child: const Text('或者，手动填写一道菜'),
+          ),
+        ],
+      ),
+    );
+  }
 
-    return Column(
-      children: [
-        Expanded(
-          child: hasImage
-              ? Image.memory(state.imageBytes!, fit: BoxFit.contain)
-              : Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.camera_alt_outlined, size: 80,
-                          color: Theme.of(context).colorScheme.outline),
-                      const SizedBox(height: 16),
-                      Text('拍照或选择一张美食图片',
-                          style: Theme.of(context).textTheme.bodyLarge),
-                    ],
-                  ),
-                ),
-        ),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Row(
+  Future<void> _pickAndAnalyze(
+      CameraNotifier notifier, ImageSource source) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: source, imageQuality: 100);
+    if (picked == null) return;
+    ref.read(analyticsProvider).log('image_picked', {
+      'source': source == ImageSource.camera ? 'camera' : 'gallery',
+    });
+    final file = File(picked.path);
+    final bytes = await file.readAsBytes();
+    await notifier.setImageAndAnalyze(file, bytes);
+  }
+
+  // ---------- 识别中 ----------
+  Widget _analyzingView(CameraState state) {
+    final theme = Theme.of(context);
+    const stages = [
+      (icon: '🍅', text: '识别食物中...'),
+      (icon: '💰', text: '估算成本中...'),
+      (icon: '📝', text: '生成制作步骤中...'),
+    ];
+    final stage = stages[_stage.clamp(0, 2)];
+
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          if (state.imageBytes != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.memory(
+                state.imageBytes!,
+                height: 200,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
+          const Spacer(),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: Text(
+              stage.icon,
+              key: ValueKey(stage.icon),
+              style: const TextStyle(fontSize: 56),
+            ),
+          ),
+          const SizedBox(height: 16),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: Text(
+              stage.text,
+              key: ValueKey(stage.text),
+              style: theme.textTheme.titleMedium,
+            ),
+          ),
+          const SizedBox(height: 24),
+          const SizedBox(
+            width: 200,
+            child: LinearProgressIndicator(minHeight: 3),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '通常需要 5–8 秒',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.outline),
+          ),
+          const Spacer(),
+        ],
+      ),
+    );
+  }
+
+  // ---------- 错误 ----------
+  Widget _errorView(CameraState state, CameraNotifier notifier) {
+    final theme = Theme.of(context);
+    final isNoFood = state.errorCode == 'no_food_detected';
+
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          if (state.imageBytes != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.memory(
+                state.imageBytes!,
+                height: 160,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
+          const SizedBox(height: 24),
+          Icon(
+            isNoFood ? Icons.restaurant_menu_outlined : Icons.error_outline,
+            size: 56,
+            color: theme.colorScheme.error,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            isNoFood ? '图片里没有看到食物' : '识别失败',
+            style: theme.textTheme.titleLarge,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            state.errorMessage ?? '',
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: theme.colorScheme.outline),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                notifier.reset();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('换一张图'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                notifier.reset();
+                _goManual();
+              },
+              icon: const Icon(Icons.edit_note),
+              label: const Text('我自己填'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (!isNoFood)
+            SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                onPressed: () => _showFeedbackSheet(state),
+                icon: const Icon(Icons.flag_outlined, size: 16),
+                label: const Text('反馈：识别有问题'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _goManual() {
+    final now = DateTime.now();
+    final blank = FoodRecord(
+      id: 'new',
+      dishName: '',
+      category: '其他',
+      ingredients: const [],
+      steps: const [],
+      totalCost: 0,
+      servingSize: 1,
+      difficulty: '中等',
+      tips: const [],
+      cookedAt: DateTime(now.year, now.month, now.day),
+      source: 'manual',
+      createdAt: now,
+      updatedAt: now,
+    );
+    context.pushReplacement('/food/new/edit', extra: {'record': blank});
+  }
+
+  Future<void> _showFeedbackSheet(CameraState state) async {
+    final reasons = <String, String>{
+      'wrong_dish': '菜名识别错了',
+      'wrong_ingredients': '材料不准',
+      'wrong_steps': '步骤不对',
+      'wrong_cost': '价格离谱',
+      'other': '其他',
+    };
+    final selected = <String>{};
+    final commentCtrl = TextEditingController();
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSt) => Padding(
+            padding: EdgeInsets.fromLTRB(
+                16, 16, 16, 16 + MediaQuery.of(ctx).viewInsets.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _pickImage(notifier, ImageSource.gallery),
-                    icon: const Icon(Icons.photo_library),
-                    label: const Text('相册'),
+                Text('反馈问题',
+                    style: Theme.of(ctx).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: reasons.entries.map((e) {
+                    final on = selected.contains(e.key);
+                    return FilterChip(
+                      label: Text(e.value),
+                      selected: on,
+                      onSelected: (_) => setSt(() {
+                        if (on) {
+                          selected.remove(e.key);
+                        } else {
+                          selected.add(e.key);
+                        }
+                      }),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: commentCtrl,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    hintText: '想说点什么？（可选）',
+                    border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => _pickImage(notifier, ImageSource.camera),
-                    icon: const Icon(Icons.camera_alt),
-                    label: const Text('拍照'),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () {
+                      // 无 image_url 时通过埋点上报，不调用 /ai/feedback
+                      ref.read(analyticsProvider).log('ai_feedback', {
+                        'reasons': selected.toList(),
+                        'comment': commentCtrl.text.trim(),
+                        'error_code': state.errorCode ?? '',
+                      });
+                      Navigator.pop(ctx);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('谢谢反馈，我们会持续改进')),
+                        );
+                      }
+                    },
+                    child: const Text('提交反馈'),
                   ),
                 ),
               ],
             ),
           ),
-        ),
-        if (hasImage)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: FilledButton(
-              onPressed: () => notifier.analyze(),
-              child: const Text('开始识别'),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Future<void> _pickImage(CameraNotifier notifier, ImageSource source) async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: source, imageQuality: 100);
-    if (picked != null) {
-      final file = File(picked.path);
-      final bytes = await file.readAsBytes();
-      notifier.setImage(file, bytes);
-    }
-  }
-
-  Widget _buildAnalyzing(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(
-            width: 64,
-            height: 64,
-            child: CircularProgressIndicator(strokeWidth: 3),
-          ),
-          const SizedBox(height: 24),
-          Text('AI 正在识别中...',
-              style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text('分析食材、估算成本、生成步骤',
-              style: Theme.of(context).textTheme.bodyMedium),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildResult(BuildContext context, CameraState state) {
-    final recipe = state.recipe!;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Image
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: state.imageBytes != null
-                ? Image.memory(state.imageBytes!, fit: BoxFit.cover,
-                    width: double.infinity, height: 220)
-                : null,
-          ),
-          const SizedBox(height: 16),
-
-          // Name & category
-          Row(
-            children: [
-              Expanded(
-                child: Text(recipe.dishName,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        )),
-              ),
-              Chip(label: Text(recipe.category)),
-            ],
-          ),
-          const SizedBox(height: 8),
-
-          // Cost & difficulty
-          Row(
-            children: [
-              _infoChip(context, '${recipe.servingSize}人份'),
-              const SizedBox(width: 8),
-              _infoChip(context, recipe.difficulty),
-              const SizedBox(width: 8),
-              _infoChip(context, '¥${recipe.totalCost.toStringAsFixed(1)}'),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // Ingredients
-          Text('耗材清单', style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              )),
-          const SizedBox(height: 8),
-          ...recipe.ingredients.map((i) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    Expanded(child: Text('${i.name} ${i.amount}${i.unit}')),
-                    Text('¥${i.estimatedPrice.toStringAsFixed(1)}',
-                        style: TextStyle(
-                            color: Theme.of(context).colorScheme.primary)),
-                  ],
-                ),
-              )),
-          const SizedBox(height: 20),
-
-          // Steps
-          Text('制作步骤', style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              )),
-          const SizedBox(height: 8),
-          ...recipe.steps.map((s) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CircleAvatar(
-                      radius: 14,
-                      child: Text('${s.stepNum}',
-                          style: const TextStyle(fontSize: 14)),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(s.description)),
-                    if (s.durationMinutes > 0)
-                      Text('${s.durationMinutes}分',
-                          style: Theme.of(context).textTheme.bodySmall),
-                  ],
-                ),
-              )),
-          const SizedBox(height: 20),
-
-          // Tips
-          if (recipe.tips.isNotEmpty) ...[
-            Text('小贴士', style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                )),
-            const SizedBox(height: 8),
-            ...recipe.tips.map((t) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('💡 '),
-                      Expanded(child: Text(t)),
-                    ],
-                  ),
-                )),
-          ],
-          const SizedBox(height: 40),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoChip(BuildContext context, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(label, style: Theme.of(context).textTheme.bodySmall),
-    );
-  }
-
-  Widget _buildError(
-      BuildContext context, CameraState state, CameraNotifier notifier) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.error_outline, size: 64,
-              color: Theme.of(context).colorScheme.error),
-          const SizedBox(height: 16),
-          Text(state.errorMessage ?? '未知错误'),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: () => notifier.reset(), child: const Text('重试')),
-        ],
-      ),
+        );
+      },
     );
   }
 }
+
