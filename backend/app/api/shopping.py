@@ -15,7 +15,14 @@ from app.schemas.shopping import (
     ShoppingClearCheckedResponse,
     ShoppingExportResponse,
 )
+from app.schemas.buy_suggestion import (
+    BuySuggestionRequest,
+    BuySuggestionResponse,
+    BuySuggestionClickRequest,
+)
 from app.services import shopping_service as svc
+from app.services.buy_suggestion_service import buy_suggestion_service
+from app.services import purchase_click_service
 
 router = APIRouter(prefix="/shopping", tags=["shopping"])
 
@@ -138,3 +145,58 @@ async def export_shopping(
     items, _, _ = await svc.list_items(db, user_id)
     text = svc.export_text(items, date.today().isoformat())
     return ShoppingExportResponse(text=text)
+
+
+# ---------------- V1.1 购物建议 ----------------
+
+@router.post("/buy-suggestions", response_model=BuySuggestionResponse)
+async def buy_suggestions(
+    body: BuySuggestionRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """基于当前购物清单 + 位置，返回三个渠道的购买建议 + AI 一句话推荐。
+    详见 ARCHITECTURE §5。
+    """
+    if body.location is None and not body.city_code:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "detail": "需要位置信息或城市编码",
+                "code": "location_required",
+            },
+        )
+    lat = body.location.lat if body.location else None
+    lng = body.location.lng if body.location else None
+    try:
+        result = await buy_suggestion_service.build(
+            db=db,
+            user_id=user_id,
+            lat=lat,
+            lng=lng,
+            city_code=body.city_code,
+            radius_m=body.radius_m,
+            channels=body.channels,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail={"detail": f"购物建议生成失败: {e}", "code": "poi_upstream_error"},
+        )
+    return BuySuggestionResponse(**result)
+
+
+@router.post("/buy-suggestions/click", status_code=204)
+async def buy_suggestions_click(
+    body: BuySuggestionClickRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """轻量埋点：用户跳转任何渠道之前调用一次。"""
+    await purchase_click_service.record(
+        db,
+        user_id=user_id,
+        channel=body.channel,
+        target=body.target,
+        missing_count=body.missing_count,
+    )

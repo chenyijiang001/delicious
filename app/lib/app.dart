@@ -11,6 +11,7 @@ import 'screens/home_screen.dart';
 import 'screens/main_shell.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/prices_screen.dart';
+import 'screens/buy_suggestion_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/recipe_editor_screen.dart';
 import 'screens/shopping_screen.dart';
@@ -69,6 +70,10 @@ final _routerProvider = Provider<GoRouter>((ref) {
       ),
 
       GoRoute(path: '/shopping', builder: (_, __) => const ShoppingScreen()),
+      GoRoute(
+        path: '/shopping/buy',
+        builder: (_, __) => const BuySuggestionScreen(),
+      ),
       GoRoute(path: '/prices', builder: (_, __) => const PricesScreen()),
       GoRoute(path: '/cost', builder: (_, __) => const CostPanelScreen()),
 

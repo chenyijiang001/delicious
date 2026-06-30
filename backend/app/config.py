@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     openai_api_base: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o"
 
+    # 高德 Web API（V1.1 购物建议依赖）。
+    # 申请地址：https://console.amap.com/dev/key
+    amap_api_key: str = "placeholder"
+    amap_api_base: str = "https://restapi.amap.com/v5"
+
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440

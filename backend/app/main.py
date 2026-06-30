@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import auth, foods, ai, shopping, prices, stats, events
 from app.config import settings
 from app.services.ai_service import ai_service
+from app.services.amap_service import amap_service
+from app.services.buy_suggestion_service import buy_suggestion_service
 from app.utils.storage import ensure_bucket
 
 
@@ -18,12 +20,14 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
-    # Redis：识别结果缓存 + 后续限流
+    # Redis：识别结果缓存 + POI 缓存 + AI 建议缓存 + 后续限流
     redis_client = None
     try:
         redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
         await redis_client.ping()
         ai_service.attach_redis(redis_client)
+        amap_service.attach_redis(redis_client)
+        buy_suggestion_service.attach_redis(redis_client)
     except Exception:
         redis_client = None  # Redis 不可用不影响主流程，仅丢失缓存
 
@@ -31,6 +35,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await amap_service.aclose()
         if redis_client is not None:
             await redis_client.aclose()
 

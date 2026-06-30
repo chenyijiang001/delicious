@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/shopping_item.dart';
 import '../providers/shopping_provider.dart';
@@ -58,7 +59,9 @@ class _ShoppingScreenState extends ConsumerState<ShoppingScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
               children: [
+                if (unchecked.isNotEmpty) _buySuggestEntry(theme, unchecked.length),
                 if (unchecked.isNotEmpty) ...[
+                  const SizedBox(height: 12),
                   _sectionLabel('待购买 (${unchecked.length})', theme),
                   ...unchecked.map((i) => _row(i, theme)),
                 ],
@@ -91,6 +94,52 @@ class _ShoppingScreenState extends ConsumerState<ShoppingScreen> {
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.outline)),
         ],
+      ),
+    );
+  }
+
+  Widget _buySuggestEntry(ThemeData theme, int count) {
+    return Card(
+      margin: EdgeInsets.zero,
+      color: theme.colorScheme.primaryContainer,
+      child: InkWell(
+        onTap: () => context.push('/shopping/buy'),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.near_me,
+                    size: 22, color: theme.colorScheme.onPrimary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('看看去哪买',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onPrimaryContainer,
+                        )),
+                    const SizedBox(height: 2),
+                    Text('AI 根据 $count 项清单帮你选最近最划算的店',
+                        style: theme.textTheme.bodySmall),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right,
+                  color: theme.colorScheme.onPrimaryContainer),
+            ],
+          ),
+        ),
       ),
     );
   }
