@@ -71,6 +71,7 @@ class OfflineBlock {
 class PlatformBlock {
   final String platform;
   final String platformName;
+  final String channel; // online | delivery
   final Coverage coverage;
   final double estimatedCost;
   final int estimatedEtaMinutes;
@@ -80,6 +81,7 @@ class PlatformBlock {
   const PlatformBlock({
     required this.platform,
     required this.platformName,
+    required this.channel,
     required this.coverage,
     required this.estimatedCost,
     required this.estimatedEtaMinutes,
@@ -90,6 +92,7 @@ class PlatformBlock {
   factory PlatformBlock.fromJson(Map<String, dynamic> j) => PlatformBlock(
         platform: j['platform'] as String,
         platformName: j['platform_name'] as String,
+        channel: j['channel'] as String? ?? 'online',
         coverage: Coverage.fromJson(j['coverage'] as Map<String, dynamic>),
         estimatedCost: (j['estimated_cost'] as num).toDouble(),
         estimatedEtaMinutes: (j['estimated_eta_minutes'] as num).toInt(),

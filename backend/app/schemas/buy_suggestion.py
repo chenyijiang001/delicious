@@ -42,6 +42,7 @@ class OfflineBlock(BaseModel):
 class PlatformBlock(BaseModel):
     platform: str
     platform_name: str
+    channel: Literal["online", "delivery"]
     coverage: CoverageInfo
     estimated_cost: float
     estimated_eta_minutes: int

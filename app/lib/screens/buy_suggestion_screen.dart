@@ -359,14 +359,14 @@ class _BuySuggestionScreenState extends ConsumerState<BuySuggestionScreen>
   }
 
   Future<void> _onPlatformTap(PlatformBlock b) async {
-    final channel = b.estimatedEtaMinutes >= 50 ? 'delivery' : 'online';
+    // channel 来自后端权威（platform 配置里就标好了），不再用 ETA 猜
     ref.read(analyticsProvider).log('buy_suggest_click', {
-      'channel': channel,
+      'channel': b.channel,
       'target': b.platform,
       'missing': b.coverage.missing.length,
     });
     await ref.read(buySuggestionProvider.notifier).reportClick(
-          channel: channel,
+          channel: b.channel,
           target: b.platform,
           missingCount: b.coverage.missing.length,
         );
