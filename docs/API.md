@@ -1,6 +1,6 @@
 # Delicious API 文档
 
-> 版本: v2 (2026-06-30 修订，配合 PRD v2)
+> 版本: v2.1 (2026-06-30 修订，配合 PRD v2 + V1.1 购物建议)
 > Base URL: `http://localhost:8000/api/v1`
 
 ## 通用约定
@@ -23,7 +23,9 @@
 | 413 | payload_too_large | 图片或请求体过大 |
 | 422 | validation_error | 字段校验失败 |
 | 429 | rate_limited | 触发限流 |
+| 422 | location_required | 购物建议接口未传位置且未传 city_code (V1.1) |
 | 502 | ai_upstream_error | OpenAI 调用失败 |
+| 502 | poi_upstream_error | 高德 POI API 失败 (V1.1) |
 | 503 | service_unavailable | 后端服务暂不可用 |
 
 ---
@@ -260,6 +262,96 @@ Query: ?format=text
 Response 200:
 { "text": "🛒 购物清单 (2026-06-30)\n- 番茄 × 5个\n- 鸡蛋 × 6个\n..." }
 ```
+
+### POST /shopping/buy-suggestions  *(V1.1)*
+"看看去哪买"——基于当前购物清单 + 用户位置，返回附近超市、配送到家、外卖买菜三个渠道的去处推荐，并由 AI 合成一句话最优策略。
+
+#### Request
+```json
+{
+  "location": { "lat": 31.23, "lng": 121.47 } | null,
+  "city_code": "021",                        // 无定位时必填，"021" 即 adcode
+  "channels": ["offline", "online", "delivery"],   // 默认全选
+  "radius_m": 1500                           // offline 渠道的搜索半径，默认 1500，最大 5000
+}
+```
+
+校验规则：
+- `location` 与 `city_code` 至少传一项；都传则以 `location` 为准
+- `lat` ∈ [-90, 90]，`lng` ∈ [-180, 180]
+- 后端落库前坐标精度脱敏到 100m（约小数点后 3 位），细节见 [ARCHITECTURE §5]
+
+#### Response 200
+```json
+{
+  "ai_suggestion": "永辉买 7 项 + 叮咚补紫苏，约 ¥40 最省",
+  "items_total": 8,
+  "offline": [
+    {
+      "poi_id": "B0FFH...",
+      "name": "永辉超市（大宁店）",
+      "category": "supermarket",     // supermarket / convenience / market / fresh
+      "distance_m": 220,
+      "address": "上海市静安区大宁路 1898 号",
+      "coverage": {
+        "matched": 7,
+        "total": 8,
+        "missing": ["紫苏"]
+      },
+      "estimated_cost": 34.0,
+      "navigate_url": "https://uri.amap.com/marker?position=..."
+    }
+  ],
+  "online": [
+    {
+      "platform": "hema",            // hema / dingdong / pupu
+      "platform_name": "盒马鲜生",
+      "coverage": { "matched": 8, "total": 8, "missing": [] },
+      "estimated_eta_minutes": 30,
+      "scheme": "hema://...",        // 优先 deeplink
+      "web_fallback": "https://www.hemaos.com/..."
+    }
+  ],
+  "delivery": [
+    {
+      "platform": "meituan_maicai",
+      "platform_name": "美团买菜",
+      "coverage": { "matched": 6, "total": 8, "missing": ["紫苏", "豆瓣酱"] },
+      "scheme": "meituanwaimai://...",
+      "web_fallback": "https://i.meituan.com/..."
+    }
+  ],
+  "cache_hit": {                     // 透出用于成本观测
+    "alias": true,
+    "poi": true,
+    "coverage": false,
+    "suggestion": false
+  }
+}
+```
+
+#### Response 422 - 无法定位
+```json
+{ "detail": "需要位置信息或城市编码", "code": "location_required" }
+```
+
+#### Response 502 - 高德 / OpenAI 上游失败
+退化为仅返回 `offline` 列表（不带 AI 文案）；客户端按是否含 `ai_suggestion` 字段区分。
+
+### POST /shopping/buy-suggestions/click  *(V1.1)*
+跳转点击埋点。客户端点击任一店铺/平台跳转前调用，1xx/2xx 都返回 204 后再发起跳转。
+
+```json
+Request:
+{
+  "channel": "offline" | "online" | "delivery",
+  "target": "<poi_id 或 platform>",
+  "missing_count": 1
+}
+Response 204
+```
+
+> 说明：这是单独的轻量埋点接口，不走 `/events`，因为它需要立即可分析（联盟分佣对账的雏形）。
 
 ---
 
